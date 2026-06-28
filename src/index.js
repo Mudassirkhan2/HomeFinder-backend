@@ -11,8 +11,14 @@ const savedRoutes = require('./routes/saved')
 
 const app = express()
 
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5000')
+  .split(',').map((o) => o.trim())
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, origin || '*')
+    callback(new Error(`CORS: origin ${origin} not allowed`))
+  },
   credentials: true,
 }))
 app.use(express.json())
