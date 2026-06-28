@@ -3,6 +3,7 @@ const mongoose = require('mongoose')
 const Listing = require('../models/Listing')
 const { protect } = require('../middleware/auth')
 const upload = require('../middleware/upload')
+const cloudinary = require('../utils/cloudinary')
 
 const DEFAULT_LIMIT = 8
 const MAX_LIMIT = 40
@@ -151,13 +152,44 @@ router.put('/:id', protect, upload.array('images', 6), async (req, res) => {
     return res.status(403).json({ message: 'Not authorized' })
 
   const data = { ...req.body }
-  if (req.files?.length) data.imgUrls = req.files.map((f) => f.path)
+  if (req.files?.length) data.imgUrls = [...listing.imgUrls, ...req.files.map((f) => f.path)]
   coerceBooleans(data)
 
   const updated = await Listing.findByIdAndUpdate(req.params.id, data, {
     new: true,
     runValidators: true,
   })
+  res.json({ listing: updated })
+})
+
+// DELETE /api/listings/:id/images  — remove one image from Cloudinary + listing
+router.delete('/:id/images', protect, async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id))
+    return res.status(400).json({ message: 'Invalid listing ID' })
+
+  const { imageUrl } = req.body
+  if (!imageUrl) return res.status(400).json({ message: 'imageUrl is required' })
+
+  const listing = await Listing.findById(req.params.id)
+  if (!listing) return res.status(404).json({ message: 'Listing not found' })
+  if (listing.owner.toString() !== req.user._id.toString())
+    return res.status(403).json({ message: 'Not authorized' })
+
+  if (!listing.imgUrls.includes(imageUrl))
+    return res.status(400).json({ message: 'Image not found on this listing' })
+
+  // Extract Cloudinary public_id from URL
+  // URL shape: https://res.cloudinary.com/<cloud>/image/upload/v<version>/<public_id>.<ext>
+  const uploadIndex = imageUrl.indexOf('/upload/')
+  if (uploadIndex !== -1) {
+    const afterUpload = imageUrl.slice(uploadIndex + 8)
+    const withoutVersion = afterUpload.replace(/^v\d+\//, '')
+    const publicId = withoutVersion.replace(/\.[^/.]+$/, '')
+    await cloudinary.uploader.destroy(publicId)
+  }
+
+  await Listing.findByIdAndUpdate(req.params.id, { $pull: { imgUrls: imageUrl } })
+  const updated = await Listing.findById(req.params.id)
   res.json({ listing: updated })
 })
 

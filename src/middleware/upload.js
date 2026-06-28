@@ -1,6 +1,36 @@
 const multer = require('multer')
-const { CloudinaryStorage } = require('multer-storage-cloudinary')
 const cloudinary = require('../utils/cloudinary')
+
+class CloudinaryStorage {
+  constructor({ cloudinary: client, params }) {
+    this.client = client
+    this.params = params
+  }
+
+  _handleFile(req, file, cb) {
+    const params = typeof this.params === 'function' ? this.params(req, file) : this.params
+    const uploadStream = this.client.uploader.upload_stream(params, (error, result) => {
+      if (error) return cb(error)
+      cb(null, {
+        fieldname: file.fieldname,
+        originalname: file.originalname,
+        path: result.secure_url,
+        filename: result.public_id,
+        size: result.bytes,
+        mimetype: file.mimetype,
+      })
+    })
+    file.stream.pipe(uploadStream)
+  }
+
+  _removeFile(req, file, cb) {
+    if (file.filename) {
+      this.client.uploader.destroy(file.filename, cb)
+    } else {
+      cb(null)
+    }
+  }
+}
 
 const storage = new CloudinaryStorage({
   cloudinary,
