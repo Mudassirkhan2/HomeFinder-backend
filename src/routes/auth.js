@@ -8,12 +8,14 @@ function signToken(id) {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || '30d' })
 }
 
+const isProd = process.env.NODE_ENV === 'production'
+
 function sendToken(res, user, statusCode) {
   const token = signToken(user._id)
   res.cookie('token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
     maxAge: 30 * 24 * 60 * 60 * 1000,
   })
   res.status(statusCode).json({ user })
@@ -79,7 +81,11 @@ router.post('/google', async (req, res) => {
 })
 
 router.post('/logout', (_, res) => {
-  res.clearCookie('token')
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'lax',
+  })
   res.json({ message: 'Logged out' })
 })
 
